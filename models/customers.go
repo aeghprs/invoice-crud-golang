@@ -4,10 +4,9 @@ import "gorm.io/gorm"
 
 type Customers struct {
 	gorm.Model
-	ID       uint `gorm:"primaryKey"`
-	Name     string
-	Email    string
-	Invoices []Invoices `gorm:"foreignKey:CustomersID;"`
+	Name     string     `gorm:"not null" json:"name" binding:"required"`
+	Email    string     `gorm:"not null;unique" json:"email" binding:"required,email"`
+	Invoices []Invoices `gorm:"foreignKey:CustomersID;" json:"invoices"`
 }
 
 func (Customers) TableName() string {
