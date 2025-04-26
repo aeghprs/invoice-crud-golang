@@ -2,10 +2,10 @@ package routes
 
 import (
 	"log"
-	"net/http"
+	"main/controllers"
 	"os"
 
-	"github.com/gorilla/mux"
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
@@ -23,8 +23,15 @@ func initENVVariables() {
 func InitServer() {
 	initENVVariables()
 
-	r := mux.NewRouter()
+	router := gin.Default()
 
 	log.Printf("✅ Server started at port: %s \n", port)
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	{
+		v1 := router.Group("/customers")
+		v1.GET("/all", controllers.GetAllCustomers)
+		v1.POST("/create", controllers.CreateCustomers)
+		v1.PUT("/update/:id", controllers.UpdateCustomerStatus)
+	}
+
+	router.Run(":" + port)
 }
