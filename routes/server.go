@@ -26,10 +26,12 @@ func InitServer() {
 	router := gin.Default()
 
 	log.Printf("✅ Server started at port: %s \n", port)
-
-	router.GET("/getAllCustomers", controllers.GetAllCustomers)
-	router.POST("/createCustomers", controllers.CreateCustomers)
-	router.PUT("/updateCustomers/:id", controllers.UpdateCustomerStatus)
+	{
+		v1 := router.Group("/customers")
+		v1.GET("/all", controllers.GetAllCustomers)
+		v1.POST("/create", controllers.CreateCustomers)
+		v1.PUT("/update/:id", controllers.UpdateCustomerStatus)
+	}
 
 	router.Run(":" + port)
 }
