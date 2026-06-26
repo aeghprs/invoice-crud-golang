@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgconn"
+	"gorm.io/gorm"
 )
 
 type StatusRequest struct {
@@ -61,6 +62,7 @@ func CreateCustomers(c *gin.Context) {
 }
 
 func UpdateCustomerStatus(c *gin.Context) {
+	// 1. Parse & validate customer ID
 	idParam := c.Param("id")
 	id, err := strconv.ParseUint(idParam, 10, 64)
 	if err != nil {
@@ -68,45 +70,72 @@ func UpdateCustomerStatus(c *gin.Context) {
 		return
 	}
 
+	// 2. Parse & validate incoming status
 	var req StatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
-
 	if req.Status != "active" && req.Status != "inactive" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid status value. It must be 'active' or 'inactive'.",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Status must be 'active' or 'inactive'"})
 		return
 	}
 
-	customer := models.Customers{}
-	customer.ID = uint(id)
+	// 3. Build a GORM model stub for operations
+	customer := models.Customers{Model: gorm.Model{ID: uint(id)}}
 
 	if req.Status == "active" {
-		result := config.DB.Unscoped().Model(&customer).Update("deleted_at", nil)
-		if result.Error != nil {
+		// ---- RESTORE CUSTOMER & INVOICES ----
+
+		// a) Restore customer (clear DeletedAt)
+		resCust := config.DB.Unscoped().
+			Model(&customer).
+			Update("deleted_at", nil)
+		if resCust.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to restore customer"})
 			return
 		}
-		if result.RowsAffected == 0 {
+		if resCust.RowsAffected == 0 {
 			c.JSON(http.StatusNotFound, gin.H{"message": "Customer not found"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Customer restored successfully"})
+
+		// b) Restore all invoices for this customer
+		resInv := config.DB.Unscoped().
+			Model(&models.Invoices{}).
+			Where("customers_id = ?", customer.ID).
+			Update("deleted_at", nil)
+		if resInv.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Customer restored but failed to restore invoices"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Customer and invoices restored successfully"})
 		return
 	}
 
-	result := config.DB.Delete(&customer)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "Unexpected error occurred"})
+	// ---- SOFT-DELETE CUSTOMER & INVOICES ----
+
+	// a) Soft-delete all invoices first
+	delInv := config.DB.
+		Where("customers_id = ?", customer.ID).
+		Delete(&models.Invoices{})
+	if delInv.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to delete invoices"})
 		return
 	}
-	if result.RowsAffected == 0 {
+
+	// b) Soft-delete the customer
+	delCust := config.DB.
+		Delete(&customer)
+	if delCust.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to delete customer"})
+		return
+	}
+	if delCust.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Customer not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Customer terminated successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "Customer and invoices deleted successfully"})
 }

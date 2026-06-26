@@ -33,5 +33,11 @@ func InitServer() {
 		v1.PUT("/update/:id", controllers.UpdateCustomerStatus)
 	}
 
+	{
+		v1 := router.Group("/invoice")
+		v1.GET("/all", controllers.GetAllInvoices)
+		v1.POST("/create", controllers.CreateInvoice)
+	}
+
 	router.Run(":" + port)
 }
